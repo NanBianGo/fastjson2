@@ -5,6 +5,8 @@ import com.alibaba.fastjson2.util.Fnv;
 import com.alibaba.fastjson2.util.IOUtils;
 import com.alibaba.fastjson2.util.JDKUtils;
 import jdk.incubator.vector.ByteVector;
+import jdk.incubator.vector.VectorMask;
+import jdk.incubator.vector.VectorOperators;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -3047,9 +3049,20 @@ class JSONReaderUTF8
 
                 int upperBound = offset + ByteVector.SPECIES_64.loopBound(end - offset);
                 int vecSize = ByteVector.SPECIES_64.length();
-                for (; i < upperBound; i += vecSize, offset += vecSize) {
+                for (; offset < upperBound; i += vecSize, offset += vecSize, i += vecSize) {
                     ByteVector v = ByteVector.fromArray(ByteVector.SPECIES_64, bytes, offset);
-                    if (v.eq((byte) '\\').anyTrue() || v.eq((byte) quote).anyTrue()) {
+                    if (v.eq((byte) '\\').anyTrue()) {
+                        valueEscape = true;
+                        break;
+                    }
+
+                    if (v.eq((byte) quote).anyTrue()) {
+                        break;
+                    }
+
+                    VectorMask<Byte> mask0 = v.compare(VectorOperators.GE, (byte) 0);
+                    VectorMask<Byte> mask1 = v.lt((byte) 0xFF);
+                    if (!mask0.and(mask1).allTrue()) {
                         break;
                     }
                 }

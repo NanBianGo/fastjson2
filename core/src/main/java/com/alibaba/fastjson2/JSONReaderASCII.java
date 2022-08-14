@@ -947,7 +947,7 @@ final class JSONReaderASCII
                 // vector optimize
                 int upperBound = offset + ByteVector.SPECIES_64.loopBound(end - offset);
                 int vecSize = ByteVector.SPECIES_64.length();
-                for (; i < upperBound; i += vecSize, offset += vecSize) {
+                for (; offset < upperBound; i += vecSize, offset += vecSize) {
                     ByteVector v = ByteVector.fromArray(ByteVector.SPECIES_64, bytes, offset);
                     if (v.eq((byte) '\\').anyTrue() || v.eq((byte) quote).anyTrue()) {
                         break;
