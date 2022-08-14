@@ -1,13 +1,15 @@
 package com.alibaba.fastjson2;
 
-import com.alibaba.fastjson2.util.IOUtils;
-import com.alibaba.fastjson2.util.RyuDouble;
-import com.alibaba.fastjson2.util.RyuFloat;
+import com.alibaba.fastjson2.util.*;
+import jdk.incubator.vector.ByteVector;
+import jdk.incubator.vector.ShortVector;
+import jdk.incubator.vector.VectorOperators;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -206,6 +208,275 @@ class JSONWriterUTF16
         boolean escapeNoneAscii = (context.features & Feature.EscapeNoneAscii.mask) != 0;
         final int strlen = str.length();
         boolean escape = false;
+
+        if (JDKUtils.UNSAFE_SUPPORT) {
+            byte coder = UnsafeUtils.getStringCoder(str);
+            byte[] value = UnsafeUtils.getStringValue(str);
+
+            int minCapacity = off + strlen * 6 + 2;
+            if (minCapacity - chars.length > 0) {
+                int oldCapacity = chars.length;
+                int newCapacity = oldCapacity + (oldCapacity >> 1);
+                if (newCapacity - minCapacity < 0) {
+                    newCapacity = minCapacity;
+                }
+                if (newCapacity - MAX_ARRAY_SIZE > 0) {
+                    throw new OutOfMemoryError();
+                }
+
+                // minCapacity is usually close to size, so this is a win:
+                chars = Arrays.copyOf(chars, newCapacity);
+            }
+
+            if (coder == 0) {
+                int i = 0;
+                // vector optimize 8
+
+                chars[off++] = quote;
+                int upperBound = ByteVector.SPECIES_64.loopBound(value.length);
+                for (; i < upperBound; i += ByteVector.SPECIES_64.length()) {
+                    ByteVector v = ByteVector.fromArray(ByteVector.SPECIES_64, value, i);
+                    if (v.eq((byte) '\\').anyTrue() || v.eq((byte) quote).anyTrue() || v.lt((byte) ' ').anyTrue()) {
+                        break;
+                    }
+
+                    ShortVector sv = (ShortVector) v.convertShape(VectorOperators.B2S, ShortVector.SPECIES_128, 0);
+                    sv.intoCharArray(chars, off);
+                    off += ByteVector.SPECIES_64.length();
+                }
+
+                for (; i < value.length; i++) {
+                    byte b0 = value[i];
+                    switch (b0) {
+                        case '"':
+                        case '\'':
+                            if (b0 == quote) {
+                                chars[off++] = '\\';
+                            }
+                            chars[off++] = (char) b0;
+                            break;
+                        case '\\':
+                            chars[off++] = '\\';
+                            chars[off++] = (char) b0;
+                            break;
+                        case '\r':
+                            chars[off++] = '\\';
+                            chars[off++] = 'r';
+                            break;
+                        case '\n':
+                            chars[off++] = '\\';
+                            chars[off++] = 'n';
+                            break;
+                        case '\b':
+                            chars[off++] = '\\';
+                            chars[off++] = 'b';
+                            break;
+                        case '\f':
+                            chars[off++] = '\\';
+                            chars[off++] = 'f';
+                            break;
+                        case '\t':
+                            chars[off++] = '\\';
+                            chars[off++] = 't';
+                            break;
+                        case 0:
+                        case 1:
+                        case 2:
+                        case 3:
+                        case 4:
+                        case 5:
+                        case 6:
+                        case 7:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = (char) ('0' + b0);
+                            break;
+                        case 11:
+                        case 14:
+                        case 15:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = (char) ('a' + (b0 - 10));
+                            break;
+                        case 16:
+                        case 17:
+                        case 18:
+                        case 19:
+                        case 20:
+                        case 21:
+                        case 22:
+                        case 23:
+                        case 24:
+                        case 25:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '1';
+                            chars[off++] = (char) ('0' + (b0 - 16));
+                            break;
+                        case 26:
+                        case 27:
+                        case 28:
+                        case 29:
+                        case 30:
+                        case 31:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '1';
+                            chars[off++] = (char) ('a' + (b0 - 26));
+                            break;
+                        default:
+                            chars[off++] = (char) (b0 < 0 ? b0 & 0xFF : b0);
+                            break;
+                    }
+                }
+
+                chars[off++] = quote;
+                return;
+            } else {
+                int i = 0;
+                // vector optimize 8
+
+                chars[off++] = quote;
+                final int upperBound = value.length & ~(15);
+                for (; i < upperBound; i += 16) {
+                    ShortVector v = ShortVector.fromByteArray(ShortVector.SPECIES_128, value, i, ByteOrder.nativeOrder());
+                    if (v.eq((short) '\\').anyTrue() || v.eq((short) quote).anyTrue() || v.compare(VectorOperators.GE, (short) 0).and(v.lt((short) ' ')).anyTrue()) {
+                        break;
+                    }
+
+                    if (escapeNoneAscii && v.compare(VectorOperators.GT, 0x007F).anyTrue()) {
+                        break;
+                    }
+
+                    v.intoCharArray(chars, off);
+                    off += 8;
+                }
+
+                for (; i < value.length; i += 2) {
+                    byte b0 = value[i];
+                    byte b1 = value[i + 1];
+                    char ch = (char) (JDKUtils.BIG_ENDIAN
+                            ? (((b1 & 0xff) << 0) | ((b0 & 0xff) << 8))
+                            : (((b0 & 0xff) << 0) | ((b1 & 0xff) << 8))
+                    );
+
+                    switch (ch) {
+                        case '"':
+                        case '\'':
+                            if (ch == quote) {
+                                chars[off++] = '\\';
+                            }
+                            chars[off++] = ch;
+                            break;
+                        case '\\':
+                            chars[off++] = '\\';
+                            chars[off++] = ch;
+                            break;
+                        case '\r':
+                            chars[off++] = '\\';
+                            chars[off++] = 'r';
+                            break;
+                        case '\n':
+                            chars[off++] = '\\';
+                            chars[off++] = 'n';
+                            break;
+                        case '\b':
+                            chars[off++] = '\\';
+                            chars[off++] = 'b';
+                            break;
+                        case '\f':
+                            chars[off++] = '\\';
+                            chars[off++] = 'f';
+                            break;
+                        case '\t':
+                            chars[off++] = '\\';
+                            chars[off++] = 't';
+                            break;
+                        case 0:
+                        case 1:
+                        case 2:
+                        case 3:
+                        case 4:
+                        case 5:
+                        case 6:
+                        case 7:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = (char) ('0' + (int) ch);
+                            break;
+                        case 11:
+                        case 14:
+                        case 15:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = (char) ('a' + (ch - 10));
+                            break;
+                        case 16:
+                        case 17:
+                        case 18:
+                        case 19:
+                        case 20:
+                        case 21:
+                        case 22:
+                        case 23:
+                        case 24:
+                        case 25:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '1';
+                            chars[off++] = (char) ('0' + (ch - 16));
+                            break;
+                        case 26:
+                        case 27:
+                        case 28:
+                        case 29:
+                        case 30:
+                        case 31:
+                            chars[off++] = '\\';
+                            chars[off++] = 'u';
+                            chars[off++] = '0';
+                            chars[off++] = '0';
+                            chars[off++] = '1';
+                            chars[off++] = (char) ('a' + (ch - 26));
+                            break;
+                        default:
+                            if (escapeNoneAscii && ch > 0x007F) {
+                                chars[off++] = '\\';
+                                chars[off++] = 'u';
+                                chars[off++] = DIGITS[(ch >>> 12) & 15];
+                                chars[off++] = DIGITS[(ch >>> 8) & 15];
+                                chars[off++] = DIGITS[(ch >>> 4) & 15];
+                                chars[off++] = DIGITS[ch & 15];
+                            } else {
+                                chars[off++] = ch;
+                            }
+                            break;
+                    }
+                }
+
+                chars[off++] = quote;
+                return;
+            }
+        }
+
         {
             int i = 0;
             // vector optimize 8

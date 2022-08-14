@@ -2,6 +2,7 @@ package com.alibaba.fastjson2;
 
 import com.alibaba.fastjson2.util.JDKUtils;
 import com.alibaba.fastjson2.util.UnsafeUtils;
+import jdk.incubator.vector.ByteVector;
 
 import java.util.Arrays;
 
@@ -36,23 +37,13 @@ final class JSONWriterUTF8JDK9
 
             int valueOffset = 0;
             // vector optimize 8
-            while (valueOffset + 8 <= value.length) {
-                byte c0 = value[valueOffset];
-                byte c1 = value[valueOffset + 1];
-                byte c2 = value[valueOffset + 2];
-                byte c3 = value[valueOffset + 3];
-                byte c4 = value[valueOffset + 4];
-                byte c5 = value[valueOffset + 5];
-                byte c6 = value[valueOffset + 6];
-                byte c7 = value[valueOffset + 7];
-                if (c0 == quote || c1 == quote || c2 == quote || c3 == quote || c4 == quote || c5 == quote || c6 == quote || c7 == quote
-                        || c0 == '\\' || c1 == '\\' || c2 == '\\' || c3 == '\\' || c4 == '\\' || c5 == '\\' || c6 == '\\' || c7 == '\\'
-                        || c0 < ' ' || c1 < ' ' || c2 < ' ' || c3 < ' ' || c4 < ' ' || c5 < ' ' || c6 < ' ' || c7 < ' '
-                ) {
+            int upperBound8 = ByteVector.SPECIES_64.loopBound(value.length);
+            for (; valueOffset < upperBound8; valueOffset += ByteVector.SPECIES_64.length()) {
+                ByteVector v = ByteVector.fromArray(ByteVector.SPECIES_64, value, valueOffset);
+                if (v.eq((byte) '\\').anyTrue() || v.eq((byte) quote).anyTrue() || v.lt((byte) ' ').anyTrue()) {
                     escape = true;
                     break;
                 }
-                valueOffset += 8;
             }
 
             // vector optimize 4
@@ -236,6 +227,7 @@ final class JSONWriterUTF8JDK9
         bytes[off++] = (byte) quote;
 
         int valueOffset = 0;
+
         while (valueOffset < value.length) {
             byte b0 = value[valueOffset++];
             byte b1 = value[valueOffset++];

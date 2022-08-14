@@ -157,6 +157,17 @@ public class Issue609 {
     @Benchmark
     @BenchmarkMode(Mode.AverageTime)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
+    public void fastJSON2ObjSeTimeOptimizedForAscii(Blackhole bh) {
+        for (Student student : objList) {
+            bh.consume(
+                    com.alibaba.fastjson2.JSON.toJSONString(student, JSONWriter.Feature.OptimizedForAscii)
+            );
+        }
+    }
+
+    @Benchmark
+    @BenchmarkMode(Mode.AverageTime)
+    @OutputTimeUnit(TimeUnit.MILLISECONDS)
     public void fastJSON2ObjDeTime(Blackhole bh) {
         for (String student : strList) {
             bh.consume(com.alibaba.fastjson2.JSON.parseObject(student, Student.class));

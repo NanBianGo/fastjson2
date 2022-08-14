@@ -73,10 +73,40 @@ public class Issue609Test {
             benchmark.fastJSON2ObjSeTime(BH);
         }
         long millis = System.currentTimeMillis() - start;
-        System.out.println("fastJSON2ArrayDeTime : " + millis);
+        System.out.println("fastJSON2ObjSeTime : " + millis);
         // zulu8.62.0.19 : 1055
         // zulu11.52.13 : 3012 2222 2220 1153
+        // zulu17.32.13 : 1011
+        // zulu17.32.13_incubate_vector : 841
+        // zulu18.28.13 :
+        // zulu19.0.47 :
+        // corretto-8 :
+        // corretto-11 :
+        // corretto-17 :
+        // corretto-18 :
+        // oracle-jdk-17.0.4 :
+        // oracle-jdk-18.0.2 :
+    }
+
+    public static void fastJSON2ObjSeTimeOptimizedForAscii_test() throws Exception {
+        for (int i = 0; i < 10; i++) {
+            fastJSON2ObjSeTimeOptimizedForAscii();
+        }
+    }
+
+    public static void fastJSON2ObjSeTimeOptimizedForAscii() throws Exception {
+        Issue609 benchmark = new Issue609();
+
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < 100; ++i) {
+            benchmark.fastJSON2ObjSeTimeOptimizedForAscii(BH);
+        }
+        long millis = System.currentTimeMillis() - start;
+        System.out.println("fastJSON2ObjSeTime : " + millis);
+        // zulu8.62.0.19 :
+        // zulu11.52.13 :
         // zulu17.32.13 :
+        // zulu17.32.13_incubate_vector : 2080
         // zulu18.28.13 :
         // zulu19.0.47 :
         // corretto-8 :
@@ -116,7 +146,8 @@ public class Issue609Test {
     }
 
     public static void main(String[] args) throws Exception {
+        fastJSON2ObjSeTimeOptimizedForAscii_test();
 //        fastJSON2ObjSeTime_test();
-        fastJSON1ObjSeTime_test();
+//        fastJSON1ObjSeTime_test();
     }
 }

@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.reader.ValueConsumer;
 import com.alibaba.fastjson2.util.Fnv;
 import com.alibaba.fastjson2.util.IOUtils;
 import com.alibaba.fastjson2.util.JDKUtils;
+import jdk.incubator.vector.ByteVector;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -3041,61 +3042,74 @@ class JSONReaderUTF8
             valueEscape = false;
 
             _for:
-            for (int i = 0; ; ++i) {
-                if (offset >= end) {
-                    throw new JSONException("invalid escape character EOI");
+            {
+                int i = 0;
+
+                int upperBound = offset + ByteVector.SPECIES_64.loopBound(end - offset);
+                int vecSize = ByteVector.SPECIES_64.length();
+                for (; i < upperBound; i += vecSize, offset += vecSize) {
+                    ByteVector v = ByteVector.fromArray(ByteVector.SPECIES_64, bytes, offset);
+                    if (v.eq((byte) '\\').anyTrue() || v.eq((byte) quote).anyTrue()) {
+                        break;
+                    }
                 }
 
-                int c = bytes[offset];
-                if (c == '\\') {
-                    valueEscape = true;
-                    c = bytes[++offset];
-                    switch (c) {
-                        case 'u': {
-                            offset += 4;
-                            break;
-                        }
-                        case 'x': {
-                            offset += 2;
-                            break;
-                        }
-                        default:
-                            break;
+                for (; ; ++i) {
+                    if (offset >= end) {
+                        throw new JSONException("invalid escape character EOI");
                     }
-                    offset++;
-                    continue;
-                }
 
-                if (c >= 0) {
-                    if (c == quote) {
-                        valueLength = i;
-                        break _for;
-                    }
-                    offset++;
-                } else {
-                    switch ((c & 0xFF) >> 4) {
-                        case 12:
-                        case 13: {
-                            /* 110x xxxx   10xx xxxx*/
-                            offset += 2;
-                            ascii = false;
-                            break;
-                        }
-                        case 14: {
-                            offset += 3;
-                            ascii = false;
-                            break;
-                        }
-                        default: {
-                            /* 10xx xxxx,  1111 xxxx */
-                            if ((c >> 3) == -2) {
+                    int c = bytes[offset];
+                    if (c == '\\') {
+                        valueEscape = true;
+                        c = bytes[++offset];
+                        switch (c) {
+                            case 'u': {
                                 offset += 4;
-                                i++;
+                                break;
+                            }
+                            case 'x': {
+                                offset += 2;
+                                break;
+                            }
+                            default:
+                                break;
+                        }
+                        offset++;
+                        continue;
+                    }
+
+                    if (c >= 0) {
+                        if (c == quote) {
+                            valueLength = i;
+                            break _for;
+                        }
+                        offset++;
+                    } else {
+                        switch ((c & 0xFF) >> 4) {
+                            case 12:
+                            case 13: {
+                                /* 110x xxxx   10xx xxxx*/
+                                offset += 2;
                                 ascii = false;
                                 break;
                             }
+                            case 14: {
+                                offset += 3;
+                                ascii = false;
+                                break;
+                            }
+                            default: {
+                                /* 10xx xxxx,  1111 xxxx */
+                                if ((c >> 3) == -2) {
+                                    offset += 4;
+                                    i++;
+                                    ascii = false;
+                                    break;
+                                }
 
-                            throw new JSONException("malformed input around byte " + offset);
+                                throw new JSONException("malformed input around byte " + offset);
+                            }
                         }
                     }
                 }

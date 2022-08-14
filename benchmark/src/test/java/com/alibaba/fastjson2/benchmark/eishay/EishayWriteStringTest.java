@@ -19,7 +19,7 @@ public class EishayWriteStringTest {
         }
         long millis = System.currentTimeMillis() - start;
         System.out.println("fastjson2 millis : " + millis);
-        // zulu8.58.0.13 : 325
+        // zulu8.58.0.13 : 325 289
         // zulu11.52.13 : 347 369
         // zulu17.32.13 :
     }

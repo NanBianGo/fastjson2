@@ -21,7 +21,8 @@ public class EishayWriteUTF8BytesTest {
         System.out.println("fastjson2 millis : " + millis);
         // zulu8.58.0.13 : 336
         // zulu11.52.13 : 337
-        // zulu17.32.13 :
+        // zulu17.32.13 : 322
+        // zulu17.32.13_incubator_vector : 278
     }
 
     public static void jackson_perf_test() throws Exception {

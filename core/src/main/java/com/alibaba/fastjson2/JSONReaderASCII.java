@@ -2,6 +2,7 @@ package com.alibaba.fastjson2;
 
 import com.alibaba.fastjson2.util.Fnv;
 import com.alibaba.fastjson2.util.JDKUtils;
+import jdk.incubator.vector.ByteVector;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -944,23 +945,13 @@ final class JSONReaderASCII
                 int i = 0;
 
                 // vector optimize
-                while (offset + 8 <= end) {
-                    byte c0 = bytes[offset];
-                    byte c1 = bytes[offset + 1];
-                    byte c2 = bytes[offset + 2];
-                    byte c3 = bytes[offset + 3];
-                    byte c4 = bytes[offset + 4];
-                    byte c5 = bytes[offset + 5];
-                    byte c6 = bytes[offset + 6];
-                    byte c7 = bytes[offset + 7];
-                    if (c0 == '\\' || c1 == '\\' || c2 == '\\' || c3 == '\\' || c4 == '\\' || c5 == '\\' || c6 == '\\' || c7 == '\\') {
+                int upperBound = offset + ByteVector.SPECIES_64.loopBound(end - offset);
+                int vecSize = ByteVector.SPECIES_64.length();
+                for (; i < upperBound; i += vecSize, offset += vecSize) {
+                    ByteVector v = ByteVector.fromArray(ByteVector.SPECIES_64, bytes, offset);
+                    if (v.eq((byte) '\\').anyTrue() || v.eq((byte) quote).anyTrue()) {
                         break;
                     }
-                    if (c0 == quote || c1 == quote || c2 == quote || c3 == quote || c4 == quote || c5 == quote || c6 == quote || c7 == quote) {
-                        break;
-                    }
-                    offset += 8;
-                    i += 8;
                 }
 
                 // vector optimize

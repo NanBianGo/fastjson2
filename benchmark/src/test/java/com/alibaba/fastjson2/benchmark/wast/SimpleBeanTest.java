@@ -21,7 +21,8 @@ public class SimpleBeanTest {
 
         // zulu8.62.0.19 : 837 465 439 447
         // zulu11.52.13 :
-        // zulu17.32.13 :
+        // zulu17.32.13 : 337
+        // zulu17.32.13_incubator_vec : 319
         // zulu18.28.13 :
         // zulu19.0.47 :
         // corretto-8 :
